@@ -1,0 +1,10 @@
+<resources>
+    <string name="app_name">Isla de Android</string>
+    <string name="eyebrow">TU NUEVO COMIENZO</string>
+    <string name="welcome">Bienvenido a tu isla</string>
+    <string name="description">Un espacio para tus ideas. Este es el inicio de Isla de Android.</string>
+    <string name="start">Comenzar</string>
+    <string name="start_title">Todo listo para crear</string>
+    <string name="start_message">Tu aplicación ya tiene su primera pantalla. El siguiente paso es agregar las funciones que imaginas para tu isla.</string>
+    <string name="accept">Entendido</string>
+</resources>
