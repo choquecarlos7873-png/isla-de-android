@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="service_channel_name">Isla activa</string>
+    <string name="service_channel_description">Mantiene la isla visual sobre tus aplicaciones y permite detenerla.</string>
+    <string name="service_notification_title">Isla de Android está activa</string>
+    <string name="service_notification_text">Toca para ajustar la isla o pulsa Detener para ocultarla.</string>
+    <string name="service_stop">Detener</string>
+    <string name="service_permission_error">Activa el permiso «Mostrar sobre otras aplicaciones» para mostrar la isla.</string>
+    <string name="service_start_error">Android no pudo mantener la isla activa. Abre la aplicación y vuelve a activarla.</string>
+    <string name="service_overlay_error">No se pudo mostrar la isla. Revisa el permiso «Mostrar sobre otras aplicaciones» y vuelve a activarla.</string>
+</resources>
