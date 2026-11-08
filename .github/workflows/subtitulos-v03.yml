@@ -1,0 +1,80 @@
+name: Compilar y publicar Subtitulos ES v0.3
+on:
+  push:
+    branches:
+      - build/subtitulos-es-v03
+    paths:
+      - .github/workflows/subtitulos-v03.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Preparar fuentes y verificar integridad
+        run: |
+          python -m pip install --user brotli
+          python - <<'PY'
+          import hashlib, base64, brotli, io, tarfile
+          from pathlib import Path
+          chunks=[Path(f'source-v03/part{i}.txt').read_text().strip() for i in range(7)]
+          print('Partes:', [len(c) for c in chunks])
+          expected='12801d9eeecbe3df760dd076e1293b2a'
+          code=''.join(chunks)
+          if hashlib.md5(code.encode()).hexdigest()!=expected:
+              # Recuperar un caracter perdido al transferir la parte 5.
+              assert len(chunks[4])==2047, 'No se reconoce la discrepancia de la fuente'
+              front=''.join(chunks[:4])
+              lost=chunks[4]
+              back=''.join(chunks[5:])
+              alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+              recovered=None
+              for i in range(len(lost)+1):
+                  prefix=(front+lost[:i]).encode()
+                  suffix=(lost[i:]+back).encode()
+                  prefix_hasher=hashlib.md5(prefix)
+                  for char in alphabet:
+                      h=prefix_hasher.copy()
+                      h.update(char.encode())
+                      h.update(suffix)
+                      if h.hexdigest()==expected:
+                          recovered=front+lost[:i]+char+lost[i:]+back
+                          print('Fuente recuperada y comprobada en posición',i)
+                          break
+                  if recovered is not None: break
+              assert recovered is not None, 'No se pudo validar integridad de los fuentes'
+              code=recovered
+          assert hashlib.md5(code.encode()).hexdigest()==expected
+          data=brotli.decompress(base64.b64decode(code))
+          Path('SubtitulosES').mkdir(exist_ok=True)
+          with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+              tf.extractall('SubtitulosES',filter='data')
+          print('Archivos extraídos:', len(list(Path('SubtitulosES').rglob('*'))))
+          PY
+      - name: Compilar instalador
+        run: gradle --no-daemon -p SubtitulosES assembleDebug
+      - name: Verificar APK
+        run: |
+          test -s SubtitulosES/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t SubtitulosES/app/build/outputs/apk/debug/app-debug.apk | tail -2
+          cp SubtitulosES/app/build/outputs/apk/debug/app-debug.apk SubtitulosES-v0.3.apk
+          ls -lh SubtitulosES-v0.3.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SubtitulosES-v0.3-APK
+          path: SubtitulosES-v0.3.apk
+      - name: Publicar APK instalable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create subtitulos-es-v0.3 SubtitulosES-v0.3.apk --target build/subtitulos-es-v03 --title 'Subtitulos ES v0.3 - APK Android' --notes 'Beta: subtitulos traducidos arrastrables y punto LED de captura; prepara el traductor antes de iniciar. No probado en dispositivo fisico.'
