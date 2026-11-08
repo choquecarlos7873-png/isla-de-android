@@ -1,0 +1,125 @@
+name: Compilar Subtitulos ES v0.9
+on:
+  push:
+    branches:
+      - build/subtitulos-es-v09
+    paths:
+      - .github/workflows/subtitulos-v09.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Reconstruir codigo base v0.5
+        run: |
+          python -m pip install brotli
+          python - <<'PY'
+          import hashlib, base64, brotli, io, tarfile
+          from pathlib import Path
+          chunks=[Path(f'source-v03/part{i}.txt').read_text().strip() for i in range(7)]
+          expected='12801d9eeecbe3df760dd076e1293b2a'
+          code=''.join(chunks)
+          if hashlib.md5(code.encode()).hexdigest()!=expected:
+            front=''.join(chunks[:4]);lost=chunks[4];back=''.join(chunks[5:]);recovered=None
+            for i in range(len(lost)+1):
+              h=hashlib.md5((front+lost[:i]).encode())
+              for char in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/':
+                trial=h.copy();trial.update(char.encode());trial.update((lost[i:]+back).encode())
+                if trial.hexdigest()==expected:
+                  recovered=front+lost[:i]+char+lost[i:]+back;break
+              if recovered:break
+            assert recovered is not None,'Fuente base dañada';code=recovered
+          assert hashlib.md5(code.encode()).hexdigest()==expected
+          data=brotli.decompress(base64.b64decode(code))
+          with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+            tf.extractall('SubtitulosES',filter='data')
+          PY
+          python patch_v04.py
+          python - <<'PY'
+          import base64,brotli
+          from pathlib import Path
+          Path('patch_v05_exact.py').write_bytes(brotli.decompress(base64.b64decode(Path('patch_v05_exact.br.b64').read_text().strip())))
+          PY
+          python patch_v05_exact.py
+      - name: Aplicar optimizaciones de v0.6 comprobadas
+        run: |
+          python - <<'PY'
+          import base64,brotli,hashlib
+          from pathlib import Path
+          binary=brotli.decompress(base64.b64decode(Path('v06.patch.br.b64').read_text().strip()))
+          expected='8991b804e3ad127d8fd6f3e7bc7ce92cca29b30bad878c201138c1f41fcdbe06'
+          assert hashlib.sha256(binary).hexdigest()==expected, 'El parche v0.6 no coincide'
+          Path('v06.patch').write_bytes(binary)
+          PY
+          patch -p1 -d SubtitulosES < v06.patch
+          grep -q 'CAPTURE_INTERVAL = 140L' SubtitulosES/app/src/main/java/bo/subtitulos/es/SubtitleService.kt
+          grep -q 'versionCode = 6' SubtitulosES/app/build.gradle.kts
+      - name: Activar caja OCR y menu flotante de ajustes v0.7
+        run: |
+          python - <<'PY'
+          import base64,brotli,hashlib
+          from pathlib import Path
+          packed=Path('v07.patch.br.b64').read_text().strip()
+          binary=brotli.decompress(base64.b64decode(packed))
+          expected='9583b5a9cdc55edf854e967fba1dca34474275494b65d1f64d70f09c3d0790d1'
+          assert hashlib.sha256(binary).hexdigest()==expected, 'Integridad parche v0.7 incorrecta'
+          Path('v07.patch').write_bytes(binary)
+          PY
+          patch -p1 -d SubtitulosES < v07.patch
+          grep -q 'versionCode = 7' SubtitulosES/app/build.gradle.kts
+          grep -q 'nearSameSubtitle' SubtitulosES/app/src/main/java/bo/subtitulos/es/SubtitleService.kt
+          grep -q 'openReadEditor' SubtitulosES/app/src/main/java/bo/subtitulos/es/SubtitleService.kt
+      - name: Agregar traduccion de IA opcional y reconocer frases completas v0.8
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64,brotli,hashlib
+          pieces=[Path(f'source-v08/part{i}.txt').read_text().strip() for i in range(4)]
+          assert [len(s) for s in pieces]==[2000,2000,2000,1768], 'Paquete de parches incompleto'
+          patch=brotli.decompress(base64.b64decode(''.join(pieces)))
+          assert hashlib.sha256(patch).hexdigest()=='46c5af2f9530c2df5ef0f897b02a174bf3b25f486a8eb6e7ab2cf15eeef8d90f'
+          Path('v08.patch').write_bytes(patch)
+          PY
+          patch -p1 -d SubtitulosES < v08.patch
+          grep -q 'versionCode = 8' SubtitulosES/app/build.gradle.kts
+          grep -q 'GeminiTranslation' SubtitulosES/app/src/main/java/bo/subtitulos/es/SubtitleService.kt
+      - name: Aplicar mejoras OCR y traduccion 0.9
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import brotli,base64,hashlib
+          data=brotli.decompress(base64.b64decode(Path('v09.patch.br.b64').read_text().strip()))
+          assert hashlib.sha256(data).hexdigest()=='c002bc3d51f41b074c7ec08d87c8225b99b934299e1ba02e9ef978fbc98443b0', 'Parche no integro'
+          Path('v09.patch').write_bytes(data)
+          PY
+          patch -p1 -d SubtitulosES < v09.patch
+          grep -q 'versionCode = 9' SubtitulosES/app/build.gradle.kts
+          grep -q 'chooseSubtitle(result)' SubtitulosES/app/src/main/java/bo/subtitulos/es/SubtitleService.kt
+      - name: Compilar APK Android
+        run: gradle --no-daemon -p SubtitulosES assembleDebug
+      - name: Verificar APK
+        run: |
+          cp SubtitulosES/app/build/outputs/apk/debug/app-debug.apk SubtitulosES-v0.9.apk
+          test -s SubtitulosES-v0.9.apk
+          unzip -t SubtitulosES-v0.9.apk | tail -2
+          sha256sum SubtitulosES-v0.9.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SubtitulosES-v0.9-APK
+          path: SubtitulosES-v0.9.apk
+      - name: Publicar APK para celular
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create subtitulos-es-v0.9 SubtitulosES-v0.9.apk --target build/subtitulos-es-v09 --title 'Subtitulos ES v0.9 - OCR y traduccion mejorados' --notes 'Beta: agrupa texto de subtitulos, evita datos HUD, identifica ingles detectado desde el menu, mejora traduccion IA. Aun no probado en telefono fisico.'
