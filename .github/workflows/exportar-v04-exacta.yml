@@ -1,0 +1,48 @@
+name: Exportar codigo exacto v0.4
+on:
+  push:
+    branches: [build/subtitulos-es-v05]
+    paths: [.github/workflows/exportar-v04-exacta.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Preparar fuente anterior exacta v0.4
+        run: |
+          python -m pip install brotli
+          python - <<'PY'
+          import hashlib, base64, brotli, io, tarfile
+          from pathlib import Path
+          chunks=[Path(f'source-v03/part{i}.txt').read_text().strip() for i in range(7)]
+          expected='12801d9eeecbe3df760dd076e1293b2a'
+          code=''.join(chunks)
+          if hashlib.md5(code.encode()).hexdigest()!=expected:
+              front=''.join(chunks[:4]);lost=chunks[4];back=''.join(chunks[5:])
+              recovered=None
+              for i in range(len(lost)+1):
+                  h=hashlib.md5((front+lost[:i]).encode())
+                  for char in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/':
+                      trial=h.copy();trial.update(char.encode());trial.update((lost[i:]+back).encode())
+                      if trial.hexdigest()==expected:
+                          recovered=front+lost[:i]+char+lost[i:]+back
+                          break
+                  if recovered:break
+              assert recovered is not None,'Fuente anterior no valida'
+              code=recovered
+          assert hashlib.md5(code.encode()).hexdigest()==expected
+          data=brotli.decompress(base64.b64decode(code))
+          with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+              tf.extractall('SubtitulosES',filter='data')
+          PY
+          python patch_v04.py
+
+      - name: Empaquetar fuentes v04
+        run: tar -czf SubtitulosES-v04-exacta.tar.gz SubtitulosES
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SubtitulosES-v04-exacta
+          path: SubtitulosES-v04-exacta.tar.gz
