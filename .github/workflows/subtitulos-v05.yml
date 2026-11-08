@@ -1,0 +1,68 @@
+name: Compilar y publicar Subtitulos ES v0.5
+on:
+  push:
+    branches:
+      - build/subtitulos-es-v05
+    paths:
+      - .github/workflows/subtitulos-v05.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Preparar fuente anterior y aplicar mejoras v0.5
+        run: |
+          python -m pip install brotli
+          python - <<'PY'
+          import hashlib, base64, brotli, io, tarfile
+          from pathlib import Path
+          chunks=[Path(f'source-v03/part{i}.txt').read_text().strip() for i in range(7)]
+          expected='12801d9eeecbe3df760dd076e1293b2a'
+          code=''.join(chunks)
+          if hashlib.md5(code.encode()).hexdigest()!=expected:
+              front=''.join(chunks[:4]);lost=chunks[4];back=''.join(chunks[5:])
+              recovered=None
+              for i in range(len(lost)+1):
+                  h=hashlib.md5((front+lost[:i]).encode())
+                  for char in 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/':
+                      trial=h.copy();trial.update(char.encode());trial.update((lost[i:]+back).encode())
+                      if trial.hexdigest()==expected:
+                          recovered=front+lost[:i]+char+lost[i:]+back
+                          break
+                  if recovered:break
+              assert recovered is not None,'Fuente anterior no valida'
+              code=recovered
+          assert hashlib.md5(code.encode()).hexdigest()==expected
+          data=brotli.decompress(base64.b64decode(code))
+          with tarfile.open(fileobj=io.BytesIO(data)) as tf:
+              tf.extractall('SubtitulosES',filter='data')
+          PY
+          python patch_v05.py
+      - name: Construir APK
+        run: gradle --no-daemon -p SubtitulosES assembleDebug
+      - name: Verificar paquete instalable
+        run: |
+          cp SubtitulosES/app/build/outputs/apk/debug/app-debug.apk SubtitulosES-v0.5.apk
+          test -s SubtitulosES-v0.5.apk
+          unzip -t SubtitulosES-v0.5.apk | tail -2
+          sha256sum SubtitulosES-v0.5.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SubtitulosES-v0.5-APK
+          path: SubtitulosES-v0.5.apk
+      - name: Publicar APK para celular
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create subtitulos-es-v0.5 SubtitulosES-v0.5.apk --target build/subtitulos-es-v05 --title 'Subtitulos ES v0.5 - APK Android' --notes 'Beta con watchdog de captura, reintento de OCR, subtitulos persistentes y cache por texto normalizado; pendiente prueba en telefono fisico.'
