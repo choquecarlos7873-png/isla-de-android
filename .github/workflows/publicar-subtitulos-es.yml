@@ -1,0 +1,31 @@
+name: Publicar Subtitulos ES APK
+on:
+  push:
+    branches:
+      - build/subtitulos-es-apk
+    paths:
+      - .github/workflows/publicar-subtitulos-es.yml
+  workflow_dispatch:
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar APK compilado previamente
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          mkdir -p descargado
+          gh run download 42432727068 --name SubtitulosES-APK --dir descargado
+          test -s descargado/app-debug.apk
+          cp descargado/app-debug.apk SubtitulosES.apk
+          ls -lh SubtitulosES.apk
+      - name: Publicar enlace directo estable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create subtitulos-es-v0.1 SubtitulosES.apk --target build/subtitulos-es-apk --title "Subtitulos ES - Android APK beta 0.1" --notes "Compilacion de prueba para Android. Traductor OCR de subtitulos ingles a espanol. Todavia sin pruebas en un telefono real."
