@@ -47,6 +47,13 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(data)) as tf:
               tf.extractall('SubtitulosES',filter='data')
           PY
+          python patch_v04.py
+          python - <<'PY2'
+          import base64, brotli
+          from pathlib import Path
+          packed=Path('patch_v05.br.b64').read_text().strip()
+          Path('patch_v05.py').write_bytes(brotli.decompress(base64.b64decode(packed)))
+          PY2
           python patch_v05.py
       - name: Construir APK
         run: gradle --no-daemon -p SubtitulosES assembleDebug
