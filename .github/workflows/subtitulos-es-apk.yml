@@ -29,6 +29,8 @@ jobs:
           with tarfile.open(fileobj=io.BytesIO(data)) as t:
               t.extractall("SubtitulosES",filter="data")
           PY
+      - name: Aplicar correcciones y diagnostico v0.2
+        run: python patch_v02.py
       - name: Construir APK
         run: gradle --no-daemon -p SubtitulosES assembleDebug
       - name: Guardar instalador
@@ -38,13 +40,10 @@ jobs:
           path: SubtitulosES/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
-      - name: Publicar APK directamente en la rama aislada
+      - name: Publicar APK para instalacion directa v0.2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          cp SubtitulosES/app/build/outputs/apk/debug/app-debug.apk SubtitulosES.apk
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -f SubtitulosES.apk
-          if ! git diff --cached --quiet; then
-            git commit -m "Publish installable Android APK [skip ci]"
-            git push origin HEAD:build/subtitulos-es-apk
-          fi
+          cp SubtitulosES/app/build/outputs/apk/debug/app-debug.apk SubtitulosES-v0.2.apk
+          gh release create subtitulos-es-v0.2 SubtitulosES-v0.2.apk --target build/subtitulos-es-apk --title "Subtitulos ES - Android 0.2 beta" --notes "Version de prueba con diagnostico visible de captura OCR y traduccion. Si OCR no detecta letras, ajustar zona. Requiere pruebas reales."
